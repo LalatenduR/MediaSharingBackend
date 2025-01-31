@@ -4,6 +4,23 @@ import {uploadImage} from '../utils/Cloudinary.js';
 import {User} from '../models/user.model.js';
 import { ApiResponse } from '../utils/ApiResponse.js';
 
+const  generateAccessAndRefreshtoken=async(userId)=>{
+    try{
+        const user=await User.findById(userId);
+        const accestoken=user.generateAccessToken
+        const refreshtoken=user.generateRefreshToken
+
+        user.refreshtoken=refreshtoken;
+        await user.save({validateBeforeSave:false});
+        
+        return {accestoken,refreshtoken}
+
+    }
+    catch(error){
+        throw new apiError(500,"Failed to generate tokens");
+    }
+}
+
 const registerUser=asynchandler(async(req,res)=>{
     const{fullname,email,username,password}=req.body
     console.log("email:",email);
@@ -63,4 +80,75 @@ const registerUser=asynchandler(async(req,res)=>{
 
 })
 
-export {registerUser}
+const loginUser=asynchandler(async(req,res)=>{
+    const{email,username,password}=req.body;
+    if(!email && !username){
+        throw new apiError(400,"Email or username is required");
+    }
+
+    const user=await User.findOne({
+        $or:[{email},
+            {
+                username:username?.toLowerCase()
+            }
+        ]
+    });
+
+    if(!user){
+        throw new apiError(404,"User not found");
+    }
+
+    const isPasswordValid=await user.isPasswordCorrect(password);
+
+    if(!isPasswordValid){
+        throw new apiError(401,"Invalid user Credentials");
+    }
+    
+    const{accessToken,refreshToken}=await generateAccessAndRefreshtoken(user._id);
+
+    const loggedInUser=User.findById(user._id);
+    select("-password -refreshToken");
+
+    const options={
+        httpOnly:true,
+        secure:true
+    }
+
+    return res
+    .status(200)
+    .cookie("accessToken",accessToken,options)
+    .cookie("refreshToken",refreshToken,options)
+    .json(new ApiResponse(200,"User logged in",{
+        user:loggedInUser,
+        accessToken,
+        refreshToken
+    }));
+
+})
+
+const logoutUser= asynchandler(async(req,res)=>{
+    User.findByIdAndUpdate(
+        req.user._id,{
+            $set:{
+                refreshToken:undefined
+            },
+        },
+        {
+            new:true
+        }
+    )
+
+    const options={
+        httpOnly:true,
+        secure:true
+    }
+
+    return res
+    .status(200)
+    .clearCookie("accessToken")
+    .clearCookie("refreshToken")
+    .json(new ApiResponse(200,{},"User Logged out!!"))
+})
+
+
+export {registerUser,loginUser,logoutUser}
