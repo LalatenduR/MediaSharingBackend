@@ -4,16 +4,15 @@ import {uploadImage} from '../utils/Cloudinary.js';
 import {User} from '../models/user.model.js';
 import { ApiResponse } from '../utils/ApiResponse.js';
 
-const  generateAccessAndRefreshtoken=async(userId)=>{
+const generateAccessAndRefreshtoken=async(userId)=>{
     try{
         const user=await User.findById(userId);
-        const accestoken=user.generateAccessToken
-        const refreshtoken=user.generateRefreshToken
-
-        user.refreshtoken=refreshtoken;
+        const accessToken=user.generateAccessToken();
+        const refreshToken=user.generateRefreshToken();
+        user.refreshtoken=refreshToken;
         await user.save({validateBeforeSave:false});
         
-        return {accestoken,refreshtoken}
+        return {accessToken,refreshToken}
 
     }
     catch(error){
@@ -81,7 +80,9 @@ const registerUser=asynchandler(async(req,res)=>{
 })
 
 const loginUser=asynchandler(async(req,res)=>{
+
     const{email,username,password}=req.body;
+
     if(!email && !username){
         throw new apiError(400,"Email or username is required");
     }
@@ -106,8 +107,7 @@ const loginUser=asynchandler(async(req,res)=>{
     
     const{accessToken,refreshToken}=await generateAccessAndRefreshtoken(user._id);
 
-    const loggedInUser=User.findById(user._id);
-    select("-password -refreshToken");
+    const loggedInUser= await User.findById(user._id).select("-password -refreshToken");
 
     const options={
         httpOnly:true,
@@ -127,7 +127,7 @@ const loginUser=asynchandler(async(req,res)=>{
 })
 
 const logoutUser= asynchandler(async(req,res)=>{
-    User.findByIdAndUpdate(
+    await User.findByIdAndUpdate(
         req.user._id,{
             $set:{
                 refreshToken:undefined
