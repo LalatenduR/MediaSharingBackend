@@ -295,6 +295,76 @@ const updateUserCoverimage=asynchandler(async(req,res)=>{
     .json(new ApiResponse(200,user,"Cover Image updated"));
 })
 
+const getUserChannelProfile=asynchandler(async(req,res)=>{
+    const {username}=req.params;
+
+
+    if(!username?.trim())
+    {
+        throw new apiError(400,"Username is missing");
+    }
+
+    const channel=await User.aggregate([
+        {
+            $match:username?.toLowerCase()
+        },
+        {
+            $lookup:{
+                from:"subscriptions",
+                localField:"_id",
+                foreignField:"channel",
+                as:"subscribers"
+            }
+        },
+        {
+            $lookup:{
+                from:"subscriptions",
+                localField:"_id",
+                foreignField:"subscriber",
+                as:"subscribeTo"
+            }
+        },{
+            $addFields:{
+                subscribersCount:{
+                    $size:"$subscribers"
+                },
+                channelsSubcribedToCount:{
+                    $size:"$subscribeTo"
+                },
+                subscribedTo:{
+                    $cond:{
+                        if:{$in:[req.user?._id,"$subscribers.subscriber"]},
+                        then:true,
+                        else:false
+                    }
+                }
+            }
+        },
+        {
+            $project:{
+                fullName:1,
+                username:1,
+                subscribersCount:1,
+                channelsSubcribedToCount:1,
+                subscribedTo:1,
+                avatar:1,
+                coverimage:1,
+                email:1,
+            }
+        }
+    ])
+
+    if(!channel?.length)
+    {
+        throw new apiError(404,"channel doesn't exist")
+    }
+
+    return res
+    .status(200)
+    .json(new ApiResponse(200,channel[0],))
+})
+
+
 export {
     registerUser,
     loginUser,
@@ -303,5 +373,6 @@ export {
     changeCurrentPassword,
     getCurrentUser,
     updateAccountDetails,
-    updateuseravatar
+    updateuseravatar,
+    updateUserCoverimage
 }
